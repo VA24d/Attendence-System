@@ -51,7 +51,7 @@ try:
     with open(CONFIG_FILE, 'r') as f:
         DEVICE = f.read().strip().lower()
 except FileNotFoundError:
-    DEVICE = "gpu"  # Default to GPU if no config file
+    DEVICE = "cpu"  # Default to cpu if no config file
 
 # If you want to force CPU usage, change this line
 if not torch.cuda.is_available():
@@ -104,7 +104,9 @@ class AttendanceSystem:
             print(f"Warning: Failed to initialize camera: {e}")
         
         # Initialize spoof detector with same device as face analyzer
-        device_id = 0 if torch.cuda.is_available() else -1
+        device_id = -1  # Default to CPU
+        if self.device == "gpu" and torch.cuda.is_available():
+            device_id = 0
         self.spoof_detector = SpoofDetector(device_id=device_id)
         
         # Add spoof detection status
@@ -117,12 +119,22 @@ class AttendanceSystem:
         
         self.set_app_icon()
 
-        
         # Bind window close button (X) to quit function
         self.root.protocol("WM_DELETE_WINDOW", self.quit_application)
         
         # Bind escape key to quit function
         self.root.bind('<Escape>', lambda e: self.quit_application())
+        
+        self.last_resize_time = 0
+        self.resize_debounce_delay = 0.1  # 100ms
+        self.preview_dimensions = (640, 480)  # Default size
+        
+        # Bind resize event
+        self.root.bind("<Configure>", self.handle_window_resize)
+        
+        self.last_detections = {}  # Track multiple people
+        self.detection_cleanup_interval = 10  # Cleanup every 10 seconds
+        self.last_cleanup = time.time()
         
         # force focus on the window
         self.root.focus_force()
@@ -168,7 +180,7 @@ class AttendanceSystem:
                 self.device = "cpu"
                 self.providers = ['CPUExecutionProvider']
         if self.device == "mps":
-            # Apple metal plugi
+            # Apple metal plugin
             self.providers = ['MetalExecutionProvider']
         else:
             print("\nUsing CPU for processing (GPU not requested)")
@@ -499,7 +511,7 @@ class AttendanceSystem:
         self.root.wait_window(dialog)
         
         return result[0]
-    
+
     def register_photos(self, name):
         """Capture and save photos for registration"""
         if self.cap is None or not self.cap.isOpened():
@@ -1170,10 +1182,21 @@ class AttendanceSystem:
                     self.cap = self.init_camera()
                     if self.cap is None:
                         return
+                
+                # Do initial resize before starting video feed
+                self.root.update_idletasks()  # Ensure window dimensions are updated
+                padding = 40
+                margin = 20
+                available_width = self.root.winfo_width() - padding
+                available_height = self.root.winfo_height() - self.gui.video_label.winfo_y() - margin
+                
+                self.resize_video_frame(available_width, available_height)
+            
                 self.gui.toggle_btn.config(text="Stop Recognition", bg='#f44336')
                 # Show database operation buttons
                 self.gui.add_db_btn.pack(side=tk.LEFT, padx=5)
                 self.gui.mismatch_btn.pack(side=tk.LEFT, padx=5)
+                
                 self.update_video_feed()
             else:
                 self.gui.toggle_btn.config(text="Start Recognition", bg='#2196F3')
@@ -1194,6 +1217,122 @@ class AttendanceSystem:
             if self.cap is not None:
                 self.cap.release()
                 self.cap = None
+    
+    def resize_video_frame(self, width, height):
+        """Resize video frame while maintaining aspect ratio with bounds checking"""
+        if not hasattr(self, 'cap') or self.cap is None:
+            return
+            
+        # Minimum and maximum dimensions
+        MIN_WIDTH = 320
+        MIN_HEIGHT = 240
+        MAX_WIDTH = 1920
+        MAX_HEIGHT = 1080
+        
+        # Constrain input dimensions
+        width = max(MIN_WIDTH, min(width, MAX_WIDTH))
+        height = max(MIN_HEIGHT, min(height, MAX_HEIGHT))
+        
+        try:
+            # Get camera aspect ratio
+            cam_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            cam_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            
+            if cam_width <= 0 or cam_height <= 0:
+                raise ValueError("Invalid camera dimensions")
+                
+            cam_aspect = cam_width / cam_height
+            
+            # Calculate new dimensions maintaining aspect ratio
+            if width / height > cam_aspect:
+                new_height = height
+                new_width = int(height * cam_aspect)
+            else:
+                new_width = width
+                new_height = int(width / cam_aspect)
+            
+            # Ensure dimensions are even (required by some codecs)
+            new_width = new_width - (new_width % 2)
+            new_height = new_height - (new_height % 2)
+            
+            # Store new dimensions
+            self.video_dimensions = (new_width, new_height)
+            
+            # Update status if significant change
+            if hasattr(self, 'status_label'):
+                self.status_label.config(text=f"Video resized to {new_width}x{new_height}")
+                
+        except Exception as e:
+            print(f"Error resizing video frame: {str(e)}")
+            # Use safe default dimensions
+            self.video_dimensions = (640, 480)
+
+    def handle_window_resize(self, event):
+        """Handle window resize with debouncing"""
+        # Only handle root window resizes
+        if event.widget != self.root:
+            return
+            
+        current_time = time.time()
+        if current_time - self.last_resize_time < self.resize_debounce_delay:
+            return
+            
+        self.last_resize_time = current_time
+        
+        # Calculate available space
+        padding = 40  # Total horizontal padding
+        margin = 20   # Bottom margin
+        
+        available_width = self.root.winfo_width() - padding
+        available_height = self.root.winfo_height() - self.gui.video_label.winfo_y() - margin
+        
+        self.update_preview_dimensions(available_width, available_height)
+
+    def update_preview_dimensions(self, width, height):
+        """Update preview dimensions while maintaining aspect ratio"""
+        # Minimum dimensions
+        MIN_WIDTH = 320
+        MIN_HEIGHT = 240
+        
+        # Maximum dimensions
+        MAX_WIDTH = 1920
+        MAX_HEIGHT = 1080
+        
+        try:
+            if self.cap is None:
+                return
+                
+            # Get camera aspect ratio
+            cam_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            cam_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            
+            if cam_width <= 0 or cam_height <= 0:
+                raise ValueError("Invalid camera dimensions")
+                
+            # Calculate aspect ratio
+            cam_aspect = cam_width / cam_height
+            
+            # Constrain dimensions
+            width = max(MIN_WIDTH, min(width, MAX_WIDTH))
+            height = max(MIN_HEIGHT, min(height, MAX_HEIGHT))
+            
+            # Calculate new dimensions maintaining aspect ratio
+            if width / height > cam_aspect:
+                new_height = height
+                new_width = int(height * cam_aspect)
+            else:
+                new_width = width
+                new_height = int(width / cam_aspect)
+            
+            # Ensure even dimensions
+            new_width = new_width - (new_width % 2)
+            new_height = new_height - (new_height % 2)
+            
+            self.preview_dimensions = (new_width, new_height)
+            
+        except Exception as e:
+            print(f"Error updating preview dimensions: {e}")
+            self.preview_dimensions = (640, 480)  # Fallback size
 
     def update_video_feed(self):
         """Update video feed with face recognition and spoof detection"""
@@ -1206,11 +1345,12 @@ class AttendanceSystem:
             if not ret:
                 raise RuntimeError("Failed to get frame from webcam")
             
+            frame = cv2.resize(frame, self.preview_dimensions)
+            
             # Store current frame for database operations
             self.current_frame = frame.copy()
             self.current_face_data = None
-            
-            
+             
             # Run spoof detection and face recognition in parallel if possible
             if self.device == 'gpu':
                 with torch.cuda.stream(torch.cuda.Stream()):
@@ -1241,17 +1381,11 @@ class AttendanceSystem:
 
     def display_frame(self, frame):
         """Display frame in GUI"""
+        """Display resized frame in GUI"""
         try:
-            # Convert frame to RGB for PIL
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Convert to PIL Image
             img = Image.fromarray(frame_rgb)
-            
-            # Convert to PhotoImage
             imgtk = ImageTk.PhotoImage(image=img)
-            
-            # Update label
             self.gui.video_label.imgtk = imgtk
             self.gui.video_label.configure(image=imgtk)
             
@@ -1264,9 +1398,15 @@ class AttendanceSystem:
             bbox = face.bbox.astype(int)
             embedding = face.embedding
             
+             # Cleanup old detections periodically
+            current_time = time.time()
+            if current_time - self.last_cleanup > self.detection_cleanup_interval:
+                self._cleanup_old_detections()
+                self.last_cleanup = current_time
+            
             if len(self.known_face_embeddings) > 0:
                 # Use GPU for similarity calculations if available
-                if torch.cuda.is_available():
+                if self.device == 'gpu':
                     curr_embedding = torch.tensor(embedding.reshape(1, -1)).cuda()
                     known_embeddings = torch.tensor(self.known_face_embeddings).cuda()
                     similarities = torch.nn.functional.cosine_similarity(curr_embedding, known_embeddings)
@@ -1298,6 +1438,24 @@ class AttendanceSystem:
                         'is_fake': is_fake
                     }
                     
+                    should_print = True
+                    if best_match_id in self.last_detections:
+                        last_detect = self.last_detections[best_match_id]
+                        if (is_fake == last_detect['status'] and 
+                            current_time - last_detect['timestamp'] < 5):
+                            should_print = False
+                    
+                    if should_print:
+                        timestamp = datetime.now().strftime("%H:%M:%S")
+                        status = "FAKE" if is_fake else "REAL"
+                        print(f"[{timestamp}] Detected: {best_match_id} ({confidence:.1f}%) - {status}")
+                        
+                        # Update tracking
+                        self.last_detections[best_match_id] = {
+                            'status': is_fake,
+                            'timestamp': current_time
+                        }
+                    
                     # Draw face detection box and ID
                     x1, y1, x2, y2 = bbox
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
@@ -1328,6 +1486,7 @@ class AttendanceSystem:
                         'bbox': bbox,
                         'is_fake': is_fake
                     }
+                    
                     self.draw_unknown_face_box(frame, bbox)
                 
         except Exception as e:
@@ -1346,6 +1505,14 @@ class AttendanceSystem:
         else:
             # Linear scaling between thresholds
             return (similarity_score - base_threshold) * (95 / (high_confidence_threshold - base_threshold))
+        
+    def _cleanup_old_detections(self):
+        """Remove detections older than 10 seconds"""
+        current_time = time.time()
+        self.last_detections = {
+            k: v for k, v in self.last_detections.items()
+            if current_time - v['timestamp'] < 10
+        }
 
 if __name__ == "__main__":
     app = AttendanceSystem()

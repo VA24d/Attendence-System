@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 from theme_utils import ThemeManager
+import time
 
 class GUI:
     def __init__(self, app):
@@ -18,7 +19,8 @@ class GUI:
         # self.video_label = None
         self.setup_menubar()
         self.setup_gui()
-    
+        
+        
     def setup_menubar(self):
         """Setup application menubar"""
         menubar = tk.Menu(self.root)
@@ -287,6 +289,7 @@ class GUI:
         """Setup video display area"""
         self.video_label = tk.Label(self.root)
         self.video_label.pack(pady=10)
+        
 
     def clear_video_display(self):
         """Clear the video display"""
@@ -305,59 +308,59 @@ class GUI:
 
     # def update_colors(self):
         
-        # Update root background
-        self.root.configure(bg=colors['bg'])
+        # # Update root background
+        # self.root.configure(bg=colors['bg'])
         
-        # Helper function to update widget colors
-        def update_widget_colors(widget):
-            try:
-                if isinstance(widget, (tk.Frame, tk.LabelFrame)):
-                    widget.configure(bg=colors['bg'])
-                    if isinstance(widget, tk.LabelFrame):
-                        widget.configure(fg=colors['fg'])
-                elif isinstance(widget, tk.Label):
-                    widget.configure(bg=colors['bg'], fg=colors['fg'])
-                elif isinstance(widget, tk.Button):
-                    # Preserve button colors based on text/function
-                    text = str(widget['text']).lower()
-                    if 'quit' in text:
-                        new_bg = colors['button_bg']['danger']
-                    elif 'add' in text:
-                        new_bg = colors['button_bg']['success']
-                    elif 're-train' in text:
-                        new_bg = colors['button_bg']['warning']
-                    elif 'register' in text:
-                        new_bg = colors['button_bg']['purple']
-                    elif 'check' in text:
-                        new_bg = colors['button_bg']['indigo']
-                    elif 'mismatch' in text:
-                        new_bg = colors['button_bg']['danger']
-                    elif 'stop' in text:
-                        new_bg = colors['button_bg']['danger']
-                    else:
-                        new_bg = colors['button_bg']['primary']
+        # # Helper function to update widget colors
+        # def update_widget_colors(widget):
+        #     try:
+        #         if isinstance(widget, (tk.Frame, tk.LabelFrame)):
+        #             widget.configure(bg=colors['bg'])
+        #             if isinstance(widget, tk.LabelFrame):
+        #                 widget.configure(fg=colors['fg'])
+        #         elif isinstance(widget, tk.Label):
+        #             widget.configure(bg=colors['bg'], fg=colors['fg'])
+        #         elif isinstance(widget, tk.Button):
+        #             # Preserve button colors based on text/function
+        #             text = str(widget['text']).lower()
+        #             if 'quit' in text:
+        #                 new_bg = colors['button_bg']['danger']
+        #             elif 'add' in text:
+        #                 new_bg = colors['button_bg']['success']
+        #             elif 're-train' in text:
+        #                 new_bg = colors['button_bg']['warning']
+        #             elif 'register' in text:
+        #                 new_bg = colors['button_bg']['purple']
+        #             elif 'check' in text:
+        #                 new_bg = colors['button_bg']['indigo']
+        #             elif 'mismatch' in text:
+        #                 new_bg = colors['button_bg']['danger']
+        #             elif 'stop' in text:
+        #                 new_bg = colors['button_bg']['danger']
+        #             else:
+        #                 new_bg = colors['button_bg']['primary']
                     
-                    widget.configure(
-                        bg=new_bg,
-                        fg=colors['button_fg'],
-                        activebackground=ThemeManager.adjust_color_brightness(new_bg, 1.1),
-                        activeforeground=colors['button_fg']
-                    )
-                elif isinstance(widget, ttk.Combobox):
-                    style = ttk.Style()
-                    style.configure('TCombobox',
-                                  fieldbackground=colors['input_bg'],
-                                  background=colors['bg'],
-                                  foreground=colors['input_fg'])
-                    widget.configure(style='TCombobox')
+        #             widget.configure(
+        #                 bg=new_bg,
+        #                 fg=colors['button_fg'],
+        #                 activebackground=ThemeManager.adjust_color_brightness(new_bg, 1.1),
+        #                 activeforeground=colors['button_fg']
+        #             )
+        #         elif isinstance(widget, ttk.Combobox):
+        #             style = ttk.Style()
+        #             style.configure('TCombobox',
+        #                           fieldbackground=colors['input_bg'],
+        #                           background=colors['bg'],
+        #                           foreground=colors['input_fg'])
+        #             widget.configure(style='TCombobox')
                 
-                # Update children widgets
-                for child in widget.winfo_children():
-                    update_widget_colors(child)
+        #         # Update children widgets
+        #         for child in widget.winfo_children():
+        #             update_widget_colors(child)
                     
-            except Exception as e:
-                if "unknown option \"-fg\"" not in str(e):
-                    print(f"Error updating colors for widget {widget}: {e}")
+        #     except Exception as e:
+        #         if "unknown option \"-fg\"" not in str(e):
+        #             print(f"Error updating colors for widget {widget}: {e}")
         
-        # Update all widgets
-        update_widget_colors(self.root) 
+        # # Update all widgets
+        # update_widget_colors(self.root) 

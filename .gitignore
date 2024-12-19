@@ -1,2 +1,3 @@
-assets/student_images
-assets/face_encodings
+assets/student_images/*
+assets/face_encodings/*
+

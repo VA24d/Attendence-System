@@ -1,0 +1,17 @@
+# Core dependencies
+numpy>=1.19.5
+# OpenCV with CUDA is installed via conda
+torch>=1.9.0  # Required by insightface
+torchvision>=0.10.0  # Required by insightface
+onnxruntime-gpu>=1.8.1  # GPU version
+insightface>=0.7.3
+scikit-learn>=0.24.2
+Pillow>=8.3.2
+
+# GUI dependencies
+# tkinter is included with Python
+
+# Anti-spoofing dependencies
+albumentations>=1.0.3
+
+

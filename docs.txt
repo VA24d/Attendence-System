@@ -1,0 +1,4 @@
+Welcome to VeriFace documentation 
+
+Functional includes 
+1) add face

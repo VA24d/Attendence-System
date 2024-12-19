@@ -1,17 +1,16 @@
 #face detection works on multiple images
 #spoof detection works on multiple images too 
-# buttons are working[start recognitoon, register new face, check imagew face, check image, quit]
-#fps is not so good, drops to 4 when there are 3 people and 6 when 2
+# buttons are working[start recognition, register new face, check face, check image, quit]
 #new button to check frame, moved few gui components to new py file, added dark mode
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 import cv2
 from PIL import Image, ImageTk
 import numpy as np
-import onnxruntime as ort
+# import onnxruntime as ort
 from insightface.app import FaceAnalysis
-from insightface.data import get_image as ins_get_image
+# from insightface.data import get_image as ins_get_image
 import os
 from pathlib import Path
 from sklearn.metrics.pairwise import cosine_similarity
@@ -25,13 +24,6 @@ import shutil
 from gui_components import GUI
 from theme_utils import ThemeManager
 from ui_handlers import UIEventHandlers
-import fileinput
-
-# At the top of the file, after imports
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Use first GPU
-os.environ['OPENCV_DNN_BACKEND'] = 'CUDA'
-os.environ['OPENCV_DNN_TARGET'] = 'CUDA'
-os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'
 
 # Add Silent-Face-Anti-Spoofing directory to Python path
 SILENT_FACE_DIR = Path(__file__).parent / "Silent-Face-Anti-Spoofing-master"
@@ -41,9 +33,14 @@ if not SILENT_FACE_DIR.exists():
         "Please ensure it's in the same directory as this script."
     )
 sys.path.append(str(SILENT_FACE_DIR))
-
 # Now import spoof detector
 from spoof_detector import SpoofDetector
+
+# At the top of the file, after imports
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Use first GPU
+os.environ['OPENCV_DNN_BACKEND'] = 'CUDA'
+os.environ['OPENCV_DNN_TARGET'] = 'CUDA'
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'
 
 # Suppress the specific FutureWarning
 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -63,6 +60,7 @@ if not torch.cuda.is_available():
 class AttendanceSystem:
     def __init__(self):
         self.root = tk.Tk()
+        # self.root.configure(bg="lightblue")
         self.root.title("Face Recognition Attendance System")
         self.root.geometry("1024x768")
         
@@ -70,7 +68,7 @@ class AttendanceSystem:
         self.dark_mode = tk.BooleanVar(value=False)
         
         # Initialize theme and UI handlers
-        self.colors = ThemeManager.get_color_schemes()
+        # self.colors = ThemeManager.get_color_schemes()
         self.ui_handlers = UIEventHandlers(self)
         
         # Initialize device variable for radio buttons with current device
@@ -113,18 +111,29 @@ class AttendanceSystem:
         self.last_spoof_check = 0
         self.spoof_check_interval = 1.0  # Check every 1 second
         
-        # Add FPS calculation variables
-        self.fps_start_time = time.time()
-        self.fps_counter = 0
-        self.fps = 0
-        self.fps_update_interval = 0.5  # Update FPS every 0.5 seconds
-        
         # Initialize video-related variables
         self.current_frame = None
         self.current_face_data = None
         
+        self.set_app_icon()
+
+        
         # Bind window close button (X) to quit function
         self.root.protocol("WM_DELETE_WINDOW", self.quit_application)
+        
+        # Bind escape key to quit function
+        self.root.bind('<Escape>', lambda e: self.quit_application())
+        
+        # force focus on the window
+        self.root.focus_force()
+        
+    def set_app_icon(self):
+        # Load the icon (should be a .png file)
+        icon = Image.open("logo.png")
+        photo = ImageTk.PhotoImage(icon)
+
+        # Set the icon for the Tkinter app
+        self.root.iconphoto(True, photo)
     
     def setup_device(self):
         """Setup and verify device configuration"""
@@ -158,6 +167,9 @@ class AttendanceSystem:
                 print("Falling back to CPU")
                 self.device = "cpu"
                 self.providers = ['CPUExecutionProvider']
+        if self.device == "mps":
+            # Apple metal plugi
+            self.providers = ['MetalExecutionProvider']
         else:
             print("\nUsing CPU for processing (GPU not requested)")
             self.providers = ['CPUExecutionProvider']
@@ -479,8 +491,6 @@ class AttendanceSystem:
             dialog,
             text="Submit",
             command=submit,
-            bg='#4CAF50',
-            fg='white'
         ).pack(pady=10)
         
         # Make dialog modal
@@ -514,6 +524,17 @@ class AttendanceSystem:
                 self.cap.release()
                 self.cap = None
             reg_window.destroy()
+            
+            # Clean up captured frames
+            for frame in captured_frames:
+                del frame
+                
+            # release spacebar and escape binding
+            reg_window.unbind('<space>')
+            reg_window.unbind('<Escape>')
+            
+            # bind escape key to close main window
+            self.root.bind('<Escape>', lambda e: self.quit_application())
         
         # Bind window close event
         reg_window.protocol("WM_DELETE_WINDOW", on_reg_window_close)
@@ -689,19 +710,25 @@ class AttendanceSystem:
                         shutil.rmtree(user_dir)  # Clean up on failure
                     except:
                         pass
+                    
+        # bind space key to capture photo
+        reg_window.bind('<space>', lambda e: capture_photo())
         
         # Capture button
         capture_btn = tk.Button(
             button_frame,
             text="Take Photo 1",
             command=capture_photo,
-            bg='#2196F3',
-            fg='white',
+            bg='lightgray',
+            fg='black',
             font=('Arial', 11, 'bold'),
             width=15,
             height=1
         )
         capture_btn.pack(side=tk.LEFT, padx=5)
+        
+        # bind escape key to close registration window
+        reg_window.bind('<Escape>', lambda e: on_reg_window_close())
         
         # Cancel button
         tk.Button(
@@ -709,7 +736,7 @@ class AttendanceSystem:
             text="Cancel",
             command=reg_window.destroy,
             bg='#f44336',
-            fg='white',
+            fg='black',
             font=('Arial', 11),
             width=8,
             height=1
@@ -780,8 +807,8 @@ class AttendanceSystem:
                     result_window,
                     text="Close",
                     command=result_window.destroy,
-                    bg='#f44336',
-                    fg='white',
+                    bg='lightgray',
+                    fg='black',
                     font=('Arial', 11)
                 ).pack(pady=5)
                 
@@ -895,7 +922,7 @@ class AttendanceSystem:
                 text="Close",
                 command=result_window.destroy,
                 bg='#f44336',
-                fg='white',
+                fg='black',
                 font=('Arial', 11)
             ).pack(pady=5)
             
@@ -936,6 +963,7 @@ class AttendanceSystem:
             try:
                 self.root.quit()
                 self.root.destroy()
+                print("Application closed successfully")
             except Exception as e:
                 print(f"Warning: Error destroying window: {e}")
                 sys.exit(0)  # Force exit if needed
@@ -945,8 +973,8 @@ class AttendanceSystem:
             try:
                 self.root.quit()
                 sys.exit(0)
-            except:
-                pass  # Last resort exit
+            except Exception as e:
+                print(f"Fatal error during shutdown: {e}")
     
     def add_to_database(self):
         """Add current frame to database for recognized face"""
@@ -1054,16 +1082,16 @@ class AttendanceSystem:
             button_frame,
             text="Confirm",
             command=on_select,
-            bg='#4CAF50',
-            fg='white'
+            bg='white',
+            fg='black'
         ).pack(side=tk.LEFT, padx=5)
         
         tk.Button(
             button_frame,
             text="Cancel",
             command=dialog.destroy,
-            bg='#F44336',
-            fg='white'
+            bg='white',
+            fg='black'
         ).pack(side=tk.LEFT, padx=5)
     
     def save_frame_to_student(self, student_id, frame):
@@ -1113,7 +1141,7 @@ class AttendanceSystem:
         """Handle theme toggle"""
         self.dark_mode.set(not self.dark_mode.get())
         self.gui.draw_toggle_switch()
-        self.gui.update_colors()
+        # self.gui.update_colors()
 
     def update_student_list(self):
         """Update the list of available students"""
@@ -1173,14 +1201,6 @@ class AttendanceSystem:
             return
         
         try:
-            # FPS calculation
-            self.fps_counter += 1
-            current_time = time.time()
-            if current_time - self.fps_start_time > self.fps_update_interval:
-                self.fps = self.fps_counter / (current_time - self.fps_start_time)
-                self.fps_counter = 0
-                self.fps_start_time = current_time
-            
             # Read frame
             ret, frame = self.cap.read()
             if not ret:
@@ -1190,15 +1210,12 @@ class AttendanceSystem:
             self.current_frame = frame.copy()
             self.current_face_data = None
             
-            # Draw FPS counter
-            cv2.putText(frame, 
-                       f"FPS: {self.fps:.1f}",
-                       (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 
-                       1, (0, 255, 0), 2)
             
             # Run spoof detection and face recognition in parallel if possible
-            with torch.cuda.stream(torch.cuda.Stream()):
+            if self.device == 'gpu':
+                with torch.cuda.stream(torch.cuda.Stream()):
+                    is_real, spoof_confidence, face_results, frame = self.spoof_detector.predict(frame)
+            else:
                 is_real, spoof_confidence, face_results, frame = self.spoof_detector.predict(frame)
             
             # Process face recognition for all faces

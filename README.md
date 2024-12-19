@@ -2,18 +2,23 @@
 
 ## Installation Options
 
+### Option 1: Quick Setup with conda (Recommended)
+
+This will use a Conda environment to install all dependencies from a .yml file
+
+-> Uncomment the gpu lines to install the gpu version of onyx and pytorch
+
 ### Option 1: Quick Setup (Recommended)
-This will create an exact copy of the development environment:
+
+This will create an exact copy of the development environment
 
 1. **Create and activate a Conda environment:**
 
-conda create -n face_recognition python=3.9
-conda activate face_recognition
-
-for nvidia 
+```conda create -n face_recognition python=3.9
+conda activate face_recognition```
 
 
-2. **Install CUDA Toolkit (if using GPU):**
+2. **Install CUDA Toolkit (if using a Nvidia GPU):**
 - Download and install CUDA Toolkit 11.8 from: https://developer.nvidia.com/cuda-11-8-0-download-archive
 - Download and install cuDNN for CUDA 11.8 from: https://developer.nvidia.com/cudnn
 

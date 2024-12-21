@@ -1,26 +1,35 @@
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
-from theme_utils import ThemeManager
-import time
+import os
 
 class GUI:
     def __init__(self, app):
         self.app = app  # Reference to main AttendanceSystem instance
         self.root = app.root
-        # self.colors = app.colors
-        # self.toggle_canvas = None
-        # self.control_frame = None
-        # self.student_selector = None
-        # self.toggle_btn = None
-        # self.add_db_btn = None
-        # self.mismatch_btn = None
-        # self.status_label = None
-        # self.video_label = None
+        
+        self.is_fullscreen = False
+        self.is_dark_theme = os.environ.get('APP_THEME', 'light') == 'dark'
+        
         self.setup_menubar()
         self.setup_gui()
+    
+    def toggle_fullscreen(self):
+        self.is_fullscreen = not self.is_fullscreen
+        self.root.attributes('-fullscreen', self.is_fullscreen)
         
+    
+    def toggle_theme(self):
+        self.is_dark_theme = not self.is_dark_theme
+        os.environ['APP_THEME'] = 'dark' if self.is_dark_theme else 'light'
+        self.apply_theme()
         
+    def apply_theme(self):
+        if self.is_dark_theme:
+            self.root.tk_setPalette(background='black', foreground='white')
+        else:
+            self.root.tk_setPalette(background='white', foreground='black')
+
     def setup_menubar(self):
         """Setup application menubar"""
         menubar = tk.Menu(self.root)
@@ -29,10 +38,10 @@ class GUI:
         # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Re-train System", command=self.app.train_mode, accelerator="⌘ T")
-        file_menu.add_command(label="Register New Face", command=self.app.start_registration, accelerator="⌘ R")
+        file_menu.add_command(label="Re-train System", command=self.app.train_mode, accelerator="Command-t")
+        file_menu.add_command(label="Register New Face", command=self.app.start_registration, accelerator="Command-r")
         file_menu.add_separator()
-        file_menu.add_command(label="Quit", command=self.app.quit_application, accelerator="⌘ Q")
+        file_menu.add_command(label="Quit", command=self.app.quit_application, accelerator="Command-q")
         
         # device Menu
         device_menu = tk.Menu(menubar, tearoff=0)
@@ -43,14 +52,25 @@ class GUI:
         
         device_menu.add_separator()
         text = "Current Device: " + self.app.device.upper()
-        # desplay the current device
+        # display the current device
         device_menu.add_command(label=text, state='disabled')
         
         # Recognition Menu
         recog_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Recognition", menu=recog_menu)
-        recog_menu.add_command(label="Check Image", command=self.app.check_image, accelerator="⌘I")
-        recog_menu.add_command(label="Check Frame", command=self.app.ui_handlers.check_frame, accelerator="⌘F")
+        recog_menu.add_command(label="Check Image", command=self.app.check_image, accelerator="Command-i")
+        recog_menu.add_command(label="Check Frame", command=self.app.ui_handlers.check_frame, accelerator="Command-F")
+        
+        #View Menu
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="View", menu=view_menu)
+        view_menu.add_command(label="Toggle Fullscreen", command=self.toggle_fullscreen)
+        view_menu.add_command(label="Toggle Theme", command=self.toggle_theme)
+        
+        # Input menu
+        input_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Input", menu=input_menu)
+        input_menu.add_command(label="Choose camera")
         
         # Help Menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -125,92 +145,10 @@ class GUI:
 
     def setup_gui(self):
         """Setup all GUI components"""
-        # self.setup_theme_toggle()
-        # self.setup_device_frame()
-        # self.setup_mode_frame()
+
         self.setup_controls()
         self.setup_status()
         self.setup_video_display()
-        # self.update_colors()
-
-    def setup_theme_toggle(self):
-        """Setup theme toggle switch"""
-        theme_frame = tk.Frame(self.root)
-        theme_frame.pack(fill="x", padx=10, pady=5)
-        
-        toggle_frame = tk.Frame(theme_frame, width=60, height=30)
-        toggle_frame.pack(side=tk.RIGHT, padx=10)
-        
-        self.toggle_canvas = tk.Canvas(
-            toggle_frame, 
-            width=60, height=30,
-            # bg=self.colors['light']['bg'],
-            highlightthickness=0
-        )
-        self.toggle_canvas.pack()
-        
-        # Store reference to GUI instance in canvas
-        self.toggle_canvas.gui = self
-        
-        # self.draw_toggle_switch()
-        # self.toggle_canvas.bind('<Button-1>', self.app.toggle_theme)
-        
-        # tk.Label(
-        #     theme_frame,
-        #     text="Dark Mode",
-        #     font=('Arial', 10)
-        # ).pack(side=tk.RIGHT)
-
-    def setup_device_frame(self):
-        """Setup device selection frame"""
-        device_frame = tk.LabelFrame(self.root, text="Device", padx=10, pady=5)
-        device_frame.pack(fill="x", padx=10, pady=5)
-        
-        tk.Radiobutton(
-            device_frame,
-            text="GPU (Recommended)",
-            variable=self.app.device_var,
-            value="GPU",
-            command=self.app.change_device
-        ).pack(side=tk.LEFT, padx=5)
-        
-        tk.Radiobutton(
-            device_frame,
-            text="CPU",
-            variable=self.app.device_var,
-            value="CPU",
-            command=self.app.change_device
-        ).pack(side=tk.LEFT, padx=5)
-
-    def setup_mode_frame(self):
-        """Setup mode selection frame"""
-        mode_frame = tk.LabelFrame(self.root, text="Mode", padx=10, pady=5)
-        mode_frame.pack(fill="x", padx=10, pady=5)
-        
-        tk.Button(
-            mode_frame,
-            text="Re-train",
-            command=self.app.train_mode,
-        ).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(
-            mode_frame,
-            text="Register New Face",
-            command=self.app.start_registration,
-        ).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(
-            mode_frame,
-            text="Check Image",
-            command=self.app.check_image,
-        ).pack(side=tk.LEFT, padx=5)
-        
-        # Add Check Frame button
-        tk.Button(
-            mode_frame,
-            text="Check Frame",
-            command=self.app.ui_handlers.check_frame,
-        ).pack(side=tk.LEFT, padx=5)
 
     def setup_controls(self):
         """Setup control frame with buttons"""
@@ -290,7 +228,6 @@ class GUI:
         self.video_label = tk.Label(self.root)
         self.video_label.pack(pady=10)
         
-
     def clear_video_display(self):
         """Clear the video display"""
         # Create a blank image of the same size as the video display
@@ -305,62 +242,3 @@ class GUI:
         self.video_label.configure(image=blank_photo)
         self.video_label.image = blank_photo  # Keep a reference
 
-
-    # def update_colors(self):
-        
-        # # Update root background
-        # self.root.configure(bg=colors['bg'])
-        
-        # # Helper function to update widget colors
-        # def update_widget_colors(widget):
-        #     try:
-        #         if isinstance(widget, (tk.Frame, tk.LabelFrame)):
-        #             widget.configure(bg=colors['bg'])
-        #             if isinstance(widget, tk.LabelFrame):
-        #                 widget.configure(fg=colors['fg'])
-        #         elif isinstance(widget, tk.Label):
-        #             widget.configure(bg=colors['bg'], fg=colors['fg'])
-        #         elif isinstance(widget, tk.Button):
-        #             # Preserve button colors based on text/function
-        #             text = str(widget['text']).lower()
-        #             if 'quit' in text:
-        #                 new_bg = colors['button_bg']['danger']
-        #             elif 'add' in text:
-        #                 new_bg = colors['button_bg']['success']
-        #             elif 're-train' in text:
-        #                 new_bg = colors['button_bg']['warning']
-        #             elif 'register' in text:
-        #                 new_bg = colors['button_bg']['purple']
-        #             elif 'check' in text:
-        #                 new_bg = colors['button_bg']['indigo']
-        #             elif 'mismatch' in text:
-        #                 new_bg = colors['button_bg']['danger']
-        #             elif 'stop' in text:
-        #                 new_bg = colors['button_bg']['danger']
-        #             else:
-        #                 new_bg = colors['button_bg']['primary']
-                    
-        #             widget.configure(
-        #                 bg=new_bg,
-        #                 fg=colors['button_fg'],
-        #                 activebackground=ThemeManager.adjust_color_brightness(new_bg, 1.1),
-        #                 activeforeground=colors['button_fg']
-        #             )
-        #         elif isinstance(widget, ttk.Combobox):
-        #             style = ttk.Style()
-        #             style.configure('TCombobox',
-        #                           fieldbackground=colors['input_bg'],
-        #                           background=colors['bg'],
-        #                           foreground=colors['input_fg'])
-        #             widget.configure(style='TCombobox')
-                
-        #         # Update children widgets
-        #         for child in widget.winfo_children():
-        #             update_widget_colors(child)
-                    
-        #     except Exception as e:
-        #         if "unknown option \"-fg\"" not in str(e):
-        #             print(f"Error updating colors for widget {widget}: {e}")
-        
-        # # Update all widgets
-        # update_widget_colors(self.root) 

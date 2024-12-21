@@ -1,147 +1,110 @@
 # Face Recognition Attendance System
 
-## Installation Options
+## Overview
 
-### Option 1: Quick Setup with conda (Recommended)
+The Face Recognition Attendance System is a Python-based application that uses face recognition technology to manage attendance. It leverages machine learning models for face detection and recognition, and includes features for spoof detection to ensure the authenticity of the detected faces.
 
-This will use a Conda environment to install all dependencies from a .yml file
+## Features
 
--> Uncomment the gpu lines to install the gpu version of onyx and pytorch
+- **Face Registration**: Capture and register new faces into the system.
+- **Face Recognition**: Recognize faces from live video feed or uploaded images.
+- **Spoof Detection**: Detect and prevent spoofing attempts using advanced algorithms.
+- **Device Configuration**: Support for both CPU and GPU processing.
+- **Theme Toggle**: Switch between light and dark themes.
+- **Fullscreen Mode**: Toggle fullscreen mode for the application.
+- **Student Management**: Update and manage the list of registered students.
 
-### Option 1: Quick Setup (Recommended)
+## Installation
 
-This will create an exact copy of the development environment
+### Option 1: Quick Setup with Conda (Recommended)
+
+This will create an exact copy of the development environment.
 
 1. **Create and activate a Conda environment:**
 
-```conda create -n face_recognition python=3.9
-conda activate face_recognition```
+    ```sh
+    conda create -n face_recognition python=3.9
+    conda activate face_recognition
+    ```
 
+### Option 2: Manual Setup
 
-2. **Install CUDA Toolkit (if using a Nvidia GPU):**
-- Download and install CUDA Toolkit 11.8 from: https://developer.nvidia.com/cuda-11-8-0-download-archive
-- Download and install cuDNN for CUDA 11.8 from: https://developer.nvidia.com/cudnn
+1. **Clone the repository:**
+
+    ```sh
+    git clone https://github.com/yourusername/face_recognition_attendance_system.git
+    cd face_recognition_attendance_system
+    ```
+
+2. **Create and activate a virtual environment:**
+
+    ```sh
+    python -m venv venv
+    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    ```
 
 3. **Install dependencies:**
-Install PyTorch (required for insightface)
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-Install other dependencies
-pip install -r requirements.txt
 
-FACE_RECOG/
-├── assets/
-│ ├── student_images/
-│ │ ├── 001/
-│ │ │ ├── front.jpg
-│ │ │ ├── left.jpg
-│ │ │ └── right.jpg
-│ │ └── 002/
-│ │ └── ...
-│ └── face_encodings/
-├── main.py
-└── requirements.txt
+    ```sh
+    pip install -r requirements.txt
+    ```
 
+## Usage
 
-5. **Usage:**
-- Place student images in folders under assets/student_images/
-- Each student should have their own folder named with their ID
-- Run the program:
+1. **Place student images in folders under [student_images]
 
+    - Each student should have their own folder named with their ID.
+    - Example structure:
+
+    ```
+    assets/
+    ├── student_images/
+    │   ├── 001/
+    │   │   ├── front.jpg
+    │   │   ├── left.jpg
+    │   │   └── right.jpg
+    │   └── 002/
+    │       └── ...
+    └── face_encodings/
+    ```
+
+2. **Run the program:**
+
+    ```sh
+    python FaceRec.py
+    ```
+
+3. **Use the GUI to register new faces, recognize faces, and manage the system.**
 
 ## Troubleshooting
 
-1. **If you don't have a GPU or have GPU issues:**
-- Change DEVICE = "gpu" to DEVICE = "cpu" in main.py
-- Install onnxruntime instead of onnxruntime-gpu:
+1. **Common Issues:**
 
+    - If you get "DLL load failed" errors on Windows, install Visual C++ Redistributable:
+      - Download from: [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
 
-if onx issue due to not having gpu
-try this 
-pip uninstall onnxruntime-gpu
-pip install onnxruntime
+2. **Performance Tips:**
 
-
-2. **Common Issues:**
-- If you get "DLL load failed" errors on Windows, install Visual C++ Redistributable:
-  - Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe
-
-3. **Performance Tips:**
-- GPU mode is significantly faster for training and recognition
-- CPU mode works but will be slower, especially during training
-- Use well-lit, clear photos for best recognition results
+    - MPS mode is faster for training and recognition.
+    - CPU mode works but will be slower, especially during training.
+    - Use well-lit, clear photos for best recognition results.
 
 ## System Requirements
 
 - Python 3.9 or later
-- 4GB RAM minimum (8GB recommended)
-- NVIDIA GPU with CUDA support (optional, but recommended)
+- 8GB RAM minimum
+- Mac OS X or Linux (Windows is supported but not recommended)
 - Webcam
 
-# CPU-Only Setup Instructions
+## Contributing
 
-1. **Create and activate Conda environment:**
+Contributions are welcome! Please fork the repository and submit a pull request with your changes.
 
-conda create -n face_recognition python=3.9
-conda activate face_recognition
+## License
 
-for nvidia 
+This project is licensed under the MIT License. See the LICENSE file for details.
 
+## Acknowledgements
 
-2. **Install CUDA Toolkit (if using GPU):**
-- Download and install CUDA Toolkit 11.8 from: https://developer.nvidia.com/cuda-11-8-0-download-archive
-- Download and install cuDNN for CUDA 11.8 from: https://developer.nvidia.com/cudnn
-
-3. **Install dependencies:**
-Install PyTorch (required for insightface)
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-Install other dependencies
-pip install -r requirements.txt
-
-FACE_RECOG/
-├── assets/
-│ ├── student_images/
-│ │ ├── 001/
-│ │ │ ├── front.jpg
-│ │ │ ├── left.jpg
-│ │ │ └── right.jpg
-│ │ └── 002/
-│ │ └── ...
-│ └── face_encodings/
-├── main.py
-└── requirements.txt
-
-
-5. **Usage:**
-- Place student images in folders under assets/student_images/
-- Each student should have their own folder named with their ID
-- Run the program:
-
-
-## Troubleshooting
-
-1. **If you don't have a GPU or have GPU issues:**
-- Change DEVICE = "gpu" to DEVICE = "cpu" in main.py
-- Install onnxruntime instead of onnxruntime-gpu:
-
-
-if onx issue due to not having gpu
-try this 
-pip uninstall onnxruntime-gpu
-pip install onnxruntime
-
-
-2. **Common Issues:**
-- If you get "DLL load failed" errors on Windows, install Visual C++ Redistributable:
-  - Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe
-
-3. **Performance Tips:**
-- GPU mode is significantly faster for training and recognition
-- CPU mode works but will be slower, especially during training
-- Use well-lit, clear photos for best recognition results
-
-## System Requirements
-
-- Python 3.9 or later
-- 4GB RAM minimum (8GB recommended)
-- NVIDIA GPU with CUDA support (optional, but recommended)
-- Webcam
+- [InsightFace](https://github.com/deepinsight/insightface) for face detection and recognition.
+- [Silent-Face-Anti-Spoofing](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing) for spoof detection.

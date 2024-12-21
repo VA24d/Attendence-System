@@ -1,46 +1,38 @@
-#face detection works on multiple images
-#spoof detection works on multiple images too 
-# buttons are working[start recognition, register new face, check face, check image, quit]
-#new button to check frame, moved few gui components to new py file, added dark mode
+# mac version 
+try:
+    import tkinter as tk
+    import cv2
+    from PIL import Image, ImageTk
+    import numpy as np
+    from insightface.app import FaceAnalysis
+    import os
+    from pathlib import Path
+    from sklearn.metrics.pairwise import cosine_similarity
+    import warnings
+    import sys
+    import time
+    import torch
+    from datetime import datetime
+    import hashlib
+    import shutil
+    from gui_components import GUI
+    from ui_handlers import UIEventHandlers
 
-import tkinter as tk
-from tkinter import messagebox
-import cv2
-from PIL import Image, ImageTk
-import numpy as np
-# import onnxruntime as ort
-from insightface.app import FaceAnalysis
-# from insightface.data import get_image as ins_get_image
-import os
-from pathlib import Path
-from sklearn.metrics.pairwise import cosine_similarity
-import warnings
-import sys
-import time
-import torch
-from datetime import datetime
-import hashlib
-import shutil
-from gui_components import GUI
-from theme_utils import ThemeManager
-from ui_handlers import UIEventHandlers
+    # Add Silent-Face-Anti-Spoofing directory to Python path
+    SILENT_FACE_DIR = Path(__file__).parent / "Silent-Face-Anti-Spoofing-master"
+    if not SILENT_FACE_DIR.exists():
+        raise RuntimeError(
+            "Silent-Face-Anti-Spoofing-master directory not found! "
+            "Please ensure it's in the same directory as this script."
+        )
+    sys.path.append(str(SILENT_FACE_DIR))
+    # Now import spoof detector
+    from spoof_detector import SpoofDetector
 
-# Add Silent-Face-Anti-Spoofing directory to Python path
-SILENT_FACE_DIR = Path(__file__).parent / "Silent-Face-Anti-Spoofing-master"
-if not SILENT_FACE_DIR.exists():
-    raise RuntimeError(
-        "Silent-Face-Anti-Spoofing-master directory not found! "
-        "Please ensure it's in the same directory as this script."
-    )
-sys.path.append(str(SILENT_FACE_DIR))
-# Now import spoof detector
-from spoof_detector import SpoofDetector
-
-# At the top of the file, after imports
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Use first GPU
-os.environ['OPENCV_DNN_BACKEND'] = 'CUDA'
-os.environ['OPENCV_DNN_TARGET'] = 'CUDA'
-os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'
+except ImportError as e:
+    print(f"Error: {e}")
+    print("Please ensure all required libraries are installed.")
+    sys.exit(1)
 
 # Suppress the specific FutureWarning
 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -53,22 +45,15 @@ try:
 except FileNotFoundError:
     DEVICE = "cpu"  # Default to cpu if no config file
 
-# If you want to force CPU usage, change this line
-if not torch.cuda.is_available():
-    DEVICE = "cpu"  # Fall back to CPU if CUDA is not available
 
 class AttendanceSystem:
     def __init__(self):
         self.root = tk.Tk()
         # self.root.configure(bg="lightblue")
         self.root.title("Face Recognition Attendance System")
-        self.root.geometry("1024x768")
+        self.root.geometry("1440x900")
         
-        # Add theme state
-        self.dark_mode = tk.BooleanVar(value=False)
-        
-        # Initialize theme and UI handlers
-        # self.colors = ThemeManager.get_color_schemes()
+        # functions
         self.ui_handlers = UIEventHandlers(self)
         
         # Initialize device variable for radio buttons with current device
@@ -104,9 +89,7 @@ class AttendanceSystem:
             print(f"Warning: Failed to initialize camera: {e}")
         
         # Initialize spoof detector with same device as face analyzer
-        device_id = -1  # Default to CPU
-        if self.device == "gpu" and torch.cuda.is_available():
-            device_id = 0
+        device_id =  0 if self.device == "mps" else -1
         self.spoof_detector = SpoofDetector(device_id=device_id)
         
         # Add spoof detection status
@@ -127,7 +110,7 @@ class AttendanceSystem:
         
         self.last_resize_time = 0
         self.resize_debounce_delay = 0.1  # 100ms
-        self.preview_dimensions = (640, 480)  # Default size
+        self.preview_dimensions = (1080, 720)  # Default size
         
         # Bind resize event
         self.root.bind("<Configure>", self.handle_window_resize)
@@ -141,49 +124,34 @@ class AttendanceSystem:
         
     def set_app_icon(self):
         # Load the icon (should be a .png file)
-        icon = Image.open("logo.png")
+        icon = Image.open("assets/logo.png")
         photo = ImageTk.PhotoImage(icon)
 
         # Set the icon for the Tkinter app
         self.root.iconphoto(True, photo)
     
+    
     def setup_device(self):
         """Setup and verify device configuration"""
         self.device = DEVICE.lower()
         
-        if self.device == "gpu":
-            try:
-                cuda_available = torch.cuda.is_available()
-                if cuda_available:
-                    print("\nGPU Detection:")
-                    print(f"CUDA Device: {torch.cuda.get_device_name(0)}")
-                    print(f"CUDA Version: {torch.version.cuda}")
-                    
-                    try:
-                        # Configure OpenCV DNN for CUDA
-                        cv2.cuda.setDevice(0)
-                        cv2.ocl.setUseOpenCL(False)
-                        cv2.setNumThreads(1)
-                        print("OpenCV CUDA backend configured")
-                    except Exception as e:
-                        print(f"OpenCV CUDA setup failed: {e}")
-                    
-                    self.providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-                else:
-                    print("\nGPU requested but PyTorch CUDA not available")
-                    print("Falling back to CPU")
-                    self.device = "cpu"
-                    self.providers = ['CPUExecutionProvider']
-            except Exception as e:
-                print(f"\nError checking GPU: {str(e)}")
-                print("Falling back to CPU")
-                self.device = "cpu"
-                self.providers = ['CPUExecutionProvider']
         if self.device == "mps":
             # Apple metal plugin
-            self.providers = ['MetalExecutionProvider']
+            if not torch.backends.mps.is_available():
+                if not torch.backends.mps.is_built():
+                    print("MPS not available because the current PyTorch install was not "
+                        "built with MPS enabled.")
+                    self.providers = ['CPUExecutionProvider']
+                    
+                else:
+                    print("MPS not available because the current MacOS version is not 12.3+ "
+                        "and/or you do not have an MPS-enabled device on this machine.")
+            else:
+                print("\nUsing MPS for processing (Apple Metal Plugin)")
+                torch.device("mps")
+                self.providers = ['CPUExecutionProvider']
         else:
-            print("\nUsing CPU for processing (GPU not requested)")
+            print("\nUsing CPU for processing")
             self.providers = ['CPUExecutionProvider']
         
         print(f"Device set to: {self.device.upper()}")
@@ -194,15 +162,43 @@ class AttendanceSystem:
             name='buffalo_l',
             providers=self.providers
         )
-        self.face_analyzer.prepare(ctx_id=0 if self.device == "gpu" else -1, 
+        self.face_analyzer.prepare(ctx_id= -1, 
                                  det_size=(640, 640))
         print(f"Face analyzer initialized with {self.device.upper()}")
+        
+    def load_single_embedding(self, student_id, student_dir):
+        # Process each image in student's directory
+        for img_path in student_dir.glob("*.jpg"):
+            try:
+                # Load and process image
+                img = cv2.imread(str(img_path))
+                if img is None:
+                    print(f"Could not read {img_path}")
+                    continue
+                
+                # Get face embedding
+                faces = self.face_analyzer.get(img)
+                
+                if len(faces) > 0:
+                    # Get the face with highest detection score
+                    face = max(faces, key=lambda x: x.det_score)
+                    embedding = face.embedding
+                    
+                    self.known_face_embeddings.append(embedding)
+                    self.known_face_ids.append(student_id)
+                    print(f"Loaded embedding for student {student_id} from {img_path.name}")
+                else:
+                    print(f"No face found in {img_path}")
+                    
+            except Exception as e:
+                print(f"Error processing {img_path}: {str(e)}")
+        
     
     def load_face_embeddings(self):
         """Load face embeddings from student_images directory"""
         base_path = Path("assets/student_images")
         if not base_path.exists():
-            messagebox.showerror("Error", "student_images directory not found!")
+            tk.messagebox.showerror("Error", "student_images directory not found!")
             return
         
         print("\nLoading face embeddings...")
@@ -215,36 +211,13 @@ class AttendanceSystem:
         for student_dir in base_path.iterdir():
             if student_dir.is_dir():
                 student_id = student_dir.name
-                # Process each image in student's directory
-                for img_path in student_dir.glob("*.jpg"):
-                    try:
-                        # Load and process image
-                        img = cv2.imread(str(img_path))
-                        if img is None:
-                            print(f"Could not read {img_path}")
-                            continue
-                        
-                        # Get face embedding
-                        faces = self.face_analyzer.get(img)
-                        
-                        if len(faces) > 0:
-                            # Get the face with highest detection score
-                            face = max(faces, key=lambda x: x.det_score)
-                            embedding = face.embedding
-                            
-                            self.known_face_embeddings.append(embedding)
-                            self.known_face_ids.append(student_id)
-                            print(f"Loaded embedding for student {student_id} from {img_path.name}")
-                        else:
-                            print(f"No face found in {img_path}")
-                            
-                    except Exception as e:
-                        print(f"Error processing {img_path}: {str(e)}")
+                self.load_single_embedding(student_id, student_dir)
         
         # Convert embeddings list to numpy array for faster processing
         self.known_face_embeddings = np.array(self.known_face_embeddings)
         print(f"\nFinished loading {len(self.known_face_ids)} face embeddings")
         
+        # for gui
         if hasattr(self, 'status_label'):
             self.status_label.config(text=f"Loaded {len(self.known_face_ids)} face embeddings")
     
@@ -262,21 +235,21 @@ class AttendanceSystem:
                 cap = cv2.VideoCapture(0)
                 
             if not cap.isOpened():
-                messagebox.showerror("Error", "Could not access webcam. Please check if it's connected properly.")
+                tk.messagebox.showerror("Error", "Could not access webcam. Please check if it's connected properly.")
                 return None
             
             # Test read a frame
             ret, _ = cap.read()
             if not ret:
                 cap.release()
-                messagebox.showerror("Error", "Could not read from webcam.")
+                tk.messagebox.showerror("Error", "Could not read from webcam.")
                 return None
             
             return cap
             
         except Exception as e:
             print(f"Error initializing camera: {e}")
-            messagebox.showerror("Error", f"Camera initialization failed: {str(e)}")
+            tk.messagebox.showerror("Error", f"Camera initialization failed: {str(e)}")
             return None
     
     def run(self):
@@ -296,29 +269,21 @@ class AttendanceSystem:
     def train_mode(self):
         """Switch to training mode"""
         self.load_and_train_embeddings()
-        messagebox.showinfo("Training Complete", "Face embeddings have been updated and saved!")
+        tk.messagebox.showinfo("Training Complete", "Face embeddings have been updated and saved!")
     
     def recognition_mode(self):
         """Switch to recognition mode"""
         self.load_stored_embeddings()
-        messagebox.showinfo("Recognition Mode", "Loaded stored face embeddings!")
+        tk.messagebox.showinfo("Recognition Mode", "Loaded stored face embeddings!")
     
-    def load_and_train_embeddings(self):
+    def load_and_train_single_embedding(self, student_id):
         """Train and save face embeddings from student images with batch processing"""
-        if self.device == "cpu":
-            response = messagebox.askquestion(
-                "CPU Training",
-                "Training on CPU can be significantly slower. Continue?",
-                icon='warning'
-            )
-            if response != 'yes':
-                return
         
         base_path = Path("assets/student_images")
         embeddings_path = Path("assets/face_encodings")
         
         if not base_path.exists():
-            messagebox.showerror("Error", "student_images directory not found!")
+            tk.messagebox.showerror("Error", "student_images directory not found!")
             return
         
         embeddings_path.mkdir(exist_ok=True)
@@ -327,7 +292,80 @@ class AttendanceSystem:
         self.known_face_embeddings = []
         self.known_face_ids = []
         
-        BATCH_SIZE = 8 if self.device == "gpu" else 4
+        student_dir = base_path / student_id
+        if not student_dir.exists():
+            tk.messagebox.showerror("Error", f"Student directory {student_id} not found!")
+            return
+        
+        student_images = []
+        image_paths = list(student_dir.glob("*.jpg"))
+        
+        # Load all images first
+        for img_path in image_paths:
+            try:
+                img = cv2.imread(str(img_path))
+                if img is not None:
+                    student_images.append(img)
+                else:
+                    print(f"Could not read {img_path}")
+            except Exception as e:
+                print(f"Error loading {img_path}: {str(e)}")
+        
+        if not student_images:
+            return
+        
+        # Process images in batches
+        student_embeddings = []
+        for i in range(0, len(student_images), 4):
+            batch = student_images[i:min(i + 4, len(student_images))]
+            try:
+                # Process batch
+                faces_batch = [self.face_analyzer.get(img) for img in batch]
+                
+                # Extract embeddings from valid faces
+                for faces in faces_batch:
+                    if len(faces) > 0:
+                        # Get the face with highest detection score
+                        face = max(faces, key=lambda x: x.det_score)
+                        student_embeddings.append(face.embedding)
+                
+            except Exception as e:
+                print(f"Error processing batch: {str(e)}")
+        
+        if student_embeddings:
+            # Save embeddings for this student
+            student_embeddings = np.array(student_embeddings)
+            np.save(embeddings_path / f"{student_id}_embeddings.npy", student_embeddings)
+            
+            # Add to current session
+            self.known_face_embeddings.extend(student_embeddings)
+            self.known_face_ids.extend([student_id] * len(student_embeddings))
+            print(f"Processed {len(student_embeddings)} images for student {student_id}")
+            
+            # Convert to numpy array for faster processing
+            self.known_face_embeddings = np.array(self.known_face_embeddings)
+            print(f"\nTraining complete! Saved embeddings for {len(set(self.known_face_ids))} students")
+            
+            if hasattr(self, 'status_label'):
+                self.status_label.config(text=f"Trained {len(self.known_face_ids)} face embeddings")
+                
+    def load_and_train_embeddings(self):
+        """Train and save face embeddings from student images with batch processing"""
+        
+        base_path = Path("assets/student_images")
+        embeddings_path = Path("assets/face_encodings")
+        
+        if not base_path.exists():
+            tk.messagebox.showerror("Error", "student_images directory not found!")
+            return
+        
+        embeddings_path.mkdir(exist_ok=True)
+        print("\nTraining mode: Processing face embeddings...")
+        
+        self.known_face_embeddings = []
+        self.known_face_ids = []
+        
+        BATCH_SIZE = 4
         
         for student_dir in base_path.iterdir():
             if student_dir.is_dir():
@@ -389,7 +427,7 @@ class AttendanceSystem:
         embeddings_path = Path("assets/face_encodings")
         
         if not embeddings_path.exists():
-            messagebox.showerror("Error", "No stored embeddings found! Please run training first.")
+            tk.messagebox.showerror("Error", "No stored embeddings found! Please run training first.")
             return
         
         print("\nLoading stored face embeddings...")
@@ -435,7 +473,7 @@ class AttendanceSystem:
         """Handle device change"""
         new_device = self.device_var.get().lower()
         if new_device != self.device:
-            response = messagebox.askquestion(
+            response = tk.messagebox.askquestion(
                 "Change Device",
                 f"Changing to {new_device.upper()} requires restart. Continue?",
                 icon='warning'
@@ -451,7 +489,7 @@ class AttendanceSystem:
                     python = sys.executable
                     os.execl(python, python, *sys.argv)
                 except Exception as e:
-                    messagebox.showerror(
+                    tk.messagebox.showerror(
                         "Error", 
                         f"Failed to change device: {str(e)}"
                     )
@@ -466,59 +504,23 @@ class AttendanceSystem:
             self.cap.release()
             self.cap = None
         
-        # Get user name/ID
-        name = self.get_user_name()
-        if not name:
-            return
+        captured_frames = []
         
-        # Initialize camera for registration
-        self.cap = self.init_camera()
-        if self.cap is None:
-            messagebox.showerror("Error", "Could not access camera!")
-            return
+        # Create registration window with fixed size
+        reg_window = self.create_registration_window(captured_frames)
         
-        # Start camera for registration without creating directory yet
-        self.register_photos(name)
+        # Start preview
+        self.update_preview(reg_window, captured_frames)
     
-    def get_user_name(self):
-        """Show dialog to get user name/ID"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("New User Registration")
-        dialog.geometry("300x150")
-        
-        tk.Label(dialog, text="Enter your name/ID:").pack(pady=10)
-        
-        entry = tk.Entry(dialog, width=30)
-        entry.pack(pady=10)
-        
-        result = [None]  # Use list to store result
-        
-        def submit():
-            name = entry.get().strip()
-            if name:
-                result[0] = name
-                dialog.destroy()
-        
-        tk.Button(
-            dialog,
-            text="Submit",
-            command=submit,
-        ).pack(pady=10)
-        
-        # Make dialog modal
-        dialog.transient(self.root)
-        dialog.grab_set()
-        self.root.wait_window(dialog)
-        
-        return result[0]
 
-    def register_photos(self, name):
+
+    def register_photos(self):
         """Capture and save photos for registration"""
         if self.cap is None or not self.cap.isOpened():
             self.cap = self.init_camera()
         
         if self.cap is None:
-            messagebox.showerror("Error", "Camera not available!")
+            tk.messagebox.showerror("Error", "Camera not available!")
             return
         
         # Store captured images temporarily
@@ -529,6 +531,9 @@ class AttendanceSystem:
         reg_window.title("Face Registration")
         reg_window.geometry("640x720")
         reg_window.resizable(False, False)
+        
+        # force focus
+        reg_window.focus_force()
         
         def on_reg_window_close():
             """Handle registration window closing"""
@@ -554,6 +559,16 @@ class AttendanceSystem:
         # Main container with padding
         main_container = tk.Frame(reg_window, padx=10, pady=5)
         main_container.pack(fill="both", expand=True)
+        
+        
+        # Name Frame
+        name_frame = tk.Frame(main_container)
+        name_frame.pack(fill="x", pady=5)
+        
+        tk.Label(name_frame, text="Enter your name:", font=('Arial', 12)).pack(side="left", padx=5)
+        name_entry = tk.Entry(name_frame, font=('Arial', 12))
+        name_entry.pack(side="left", padx=5)
+
         
         # Instructions Frame at top
         instruction_frame = tk.LabelFrame(main_container, text="Instructions", padx=10, pady=5)
@@ -647,6 +662,11 @@ class AttendanceSystem:
                 reg_window.after(10, update_preview)
         
         def capture_photo():
+            name = name_entry.get()
+            if name == None:
+                tk.messagebox.showerror("Error", "Please enter your name.")
+                
+            
             nonlocal current_pose
             if current_pose >= 3:
                 return
@@ -655,10 +675,10 @@ class AttendanceSystem:
             if ret:
                 faces = self.face_analyzer.get(frame)
                 if len(faces) == 0:
-                    messagebox.showwarning("Warning", "No face detected! Please try again.")
+                    tk.messagebox.showwarning("Warning", "No face detected! Please try again.")
                     return
                 if len(faces) > 1:
-                    messagebox.showwarning(
+                    tk.messagebox.showwarning(
                         "Warning", 
                         "Multiple faces detected! Please ensure only one person is in frame."
                     )
@@ -680,14 +700,14 @@ class AttendanceSystem:
         
         def finish_registration():
             if len(captured_frames) < 3:
-                messagebox.showerror("Error", "All three photos must be captured!")
+                tk.messagebox.showerror("Error", "All three photos must be captured!")
                 return
             
             try:
                 # Create directory for new user only after all photos are captured
                 user_dir = Path("assets/student_images") / name
                 if user_dir.exists():
-                    messagebox.showerror("Error", f"User {name} already exists!")
+                    tk.messagebox.showerror("Error", f"User {name} already exists!")
                     return
                 
                 user_dir.mkdir(parents=True, exist_ok=True)
@@ -700,7 +720,7 @@ class AttendanceSystem:
                 status_label.config(text="Registration complete!")
                 capture_btn.config(state='disabled')
                 
-                response = messagebox.askyesno(
+                response = tk.messagebox.askyesno(
                     "Registration Complete",
                     "Photos captured successfully! Would you like to train the system now?"
                 )
@@ -716,7 +736,7 @@ class AttendanceSystem:
                     self.update_student_list()
                     
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to save images: {str(e)}")
+                tk.messagebox.showerror("Error", f"Failed to save images: {str(e)}")
                 if user_dir.exists():
                     try:
                         shutil.rmtree(user_dir)  # Clean up on failure
@@ -759,9 +779,8 @@ class AttendanceSystem:
     
     def check_image(self):
         """Upload and check an image against the database"""
-        from tkinter import filedialog
         
-        file_path = filedialog.askopenfilename(
+        file_path = tk.filedialog.askopenfilename(
             title="Select Image",
             filetypes=[
                 ("Image files", "*.jpg *.jpeg *.png *.bmp *.gif"),
@@ -775,12 +794,14 @@ class AttendanceSystem:
         try:
             # Read and process image
             img = cv2.imread(file_path)
+            
             if img is None:
-                messagebox.showerror("Error", "Could not read image file!")
+                tk.messagebox.showerror("Error", "Could not read image file!")
                 return
             
             # Check for spoofing first
             is_real, spoof_confidence, bbox, viz_img = self.spoof_detector.predict(img)
+            
             if not is_real:
                 # Show the visualization in a warning window
                 result_window = tk.Toplevel(self.root)
@@ -853,7 +874,7 @@ class AttendanceSystem:
             # Process image
             faces = self.face_analyzer.get(img)
             if len(faces) == 0:
-                messagebox.showwarning("Warning", "No faces detected in image!")
+                tk.messagebox.showwarning("Warning", "No faces detected in image!")
                 result_window.destroy()
                 return
             
@@ -939,7 +960,7 @@ class AttendanceSystem:
             ).pack(pady=5)
             
         except Exception as e:
-            messagebox.showerror("Error", f"Error processing image: {str(e)}")
+            tk.messagebox.showerror("Error", f"Error processing image: {str(e)}")
     
     def display_frame(self, frame):
         """Helper method to display a frame"""
@@ -964,13 +985,6 @@ class AttendanceSystem:
                 except Exception as e:
                     print(f"Warning: Error releasing camera: {e}")
             
-            # Release CUDA memory if using GPU
-            if torch.cuda.is_available():
-                try:
-                    torch.cuda.empty_cache()
-                except Exception as e:
-                    print(f"Warning: Error clearing CUDA memory: {e}")
-            
             # Destroy the window
             try:
                 self.root.quit()
@@ -991,25 +1005,25 @@ class AttendanceSystem:
     def add_to_database(self):
         """Add current frame to database for recognized face"""
         if not hasattr(self, 'current_frame') or self.current_frame is None:
-            messagebox.showerror("Error", "No frame available!")
+            tk.messagebox.showerror("Error", "No frame available!")
             return
         
         # Check for multiple faces in the frame
         faces = self.face_analyzer.get(self.current_frame)
         if len(faces) == 0:
-            messagebox.showwarning("Warning", "No face detected in current frame!")
+            tk.messagebox.showwarning("Warning", "No face detected in current frame!")
             return
         if len(faces) > 1:
-            messagebox.showwarning("Warning", "Multiple faces detected! Please ensure only one person is in frame.")
+            tk.messagebox.showwarning("Warning", "Multiple faces detected! Please ensure only one person is in frame.")
             return
         
         if not hasattr(self, 'current_face_data') or not self.current_face_data:
-            messagebox.showwarning("Warning", "No face detected in current frame!")
+            tk.messagebox.showwarning("Warning", "No face detected in current frame!")
             return
         
         face_data = self.current_face_data
         if face_data.get('is_unknown', True):
-            messagebox.showwarning(
+            tk.messagebox.showwarning(
                 "Unknown Face", 
                 "Face not recognized! Please use 'Register New Face' for new individuals."
             )
@@ -1017,30 +1031,30 @@ class AttendanceSystem:
         
         student_id = face_data['student_id']
         self.save_frame_to_student(student_id, self.current_frame.copy())
-        messagebox.showinfo("Success", f"Frame added to {student_id}'s dataset!")
+        tk.messagebox.showinfo("Success", f"Frame added to {student_id}'s dataset!")
     
     def handle_mismatch(self):
         """Handle mismatched face detection"""
         if not hasattr(self, 'current_frame') or self.current_frame is None:
-            messagebox.showerror("Error", "No frame available!")
+            tk.messagebox.showerror("Error", "No frame available!")
             return
         
         # Check for multiple faces in the frame
         faces = self.face_analyzer.get(self.current_frame)
         if len(faces) == 0:
-            messagebox.showwarning("Warning", "No face detected in current frame!")
+            tk.messagebox.showwarning("Warning", "No face detected in current frame!")
             return
         if len(faces) > 1:
-            messagebox.showwarning("Warning", "Multiple faces detected! Please ensure only one person is in frame.")
+            tk.messagebox.showwarning("Warning", "Multiple faces detected! Please ensure only one person is in frame.")
             return
         
         if not hasattr(self, 'current_face_data') or not self.current_face_data:
-            messagebox.showwarning("Warning", "No face detected in current frame!")
+            tk.messagebox.showwarning("Warning", "No face detected in current frame!")
             return
         
         face_data = self.current_face_data
         if face_data.get('is_unknown', True):
-            messagebox.showwarning(
+            tk.messagebox.showwarning(
                 "Unknown Face", 
                 "Face not recognized! Please use 'Register New Face' for new individuals."
             )
@@ -1083,7 +1097,7 @@ class AttendanceSystem:
             if listbox.curselection():
                 selected_id = listbox.get(listbox.curselection())
                 self.save_frame_to_student(selected_id, self.current_frame.copy())
-                messagebox.showinfo("Success", f"Frame added to {selected_id}'s dataset!")
+                tk.messagebox.showinfo("Success", f"Frame added to {selected_id}'s dataset!")
                 dialog.destroy()
         
         # Add buttons
@@ -1350,13 +1364,8 @@ class AttendanceSystem:
             # Store current frame for database operations
             self.current_frame = frame.copy()
             self.current_face_data = None
-             
-            # Run spoof detection and face recognition in parallel if possible
-            if self.device == 'gpu':
-                with torch.cuda.stream(torch.cuda.Stream()):
-                    is_real, spoof_confidence, face_results, frame = self.spoof_detector.predict(frame)
-            else:
-                is_real, spoof_confidence, face_results, frame = self.spoof_detector.predict(frame)
+ 
+            is_real, spoof_confidence, face_results, frame = self.spoof_detector.predict(frame)
             
             # Process face recognition for all faces
             if face_results is not None:
@@ -1405,15 +1414,9 @@ class AttendanceSystem:
                 self.last_cleanup = current_time
             
             if len(self.known_face_embeddings) > 0:
-                # Use GPU for similarity calculations if available
-                if self.device == 'gpu':
-                    curr_embedding = torch.tensor(embedding.reshape(1, -1)).cuda()
-                    known_embeddings = torch.tensor(self.known_face_embeddings).cuda()
-                    similarities = torch.nn.functional.cosine_similarity(curr_embedding, known_embeddings)
-                    similarities = similarities.cpu().numpy()
-                else:
-                    curr_embedding = embedding.reshape(1, -1)
-                    similarities = cosine_similarity(curr_embedding, self.known_face_embeddings)[0]
+
+                curr_embedding = embedding.reshape(1, -1)
+                similarities = cosine_similarity(curr_embedding, self.known_face_embeddings)[0]
                 
                 best_match_index = similarities.argmax()
                 max_similarity = similarities[best_match_index]

@@ -57,20 +57,12 @@ class AntiSpoofPredict(Detection):
         self.conf_threshold = 0.6  # Confidence threshold for face detection
         
         # Set up PyTorch device
-        if device_id >= 0 and torch.cuda.is_available():
-            self.device = torch.device(f"cuda:{device_id}")
-            print("Neural network using CUDA")
+        if device_id >= 0:
+            self.device = torch.device("mps")
+            print("Neural network using MPS")
+            # self.detector.setPreferableBackend(cv2.dnn.DNN_BACKEND_DEFAULT)
+            # self.detector.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
             
-            # Try to enable CUDA for OpenCV DNN
-            try:
-                self.detector.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-                self.detector.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
-                print("OpenCV DNN using CUDA backend")
-            except Exception as e:
-                print(f"Failed to set OpenCV CUDA backend: {e}")
-                print("OpenCV DNN falling back to CPU")
-                self.detector.setPreferableBackend(cv2.dnn.DNN_BACKEND_DEFAULT)
-                self.detector.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
         else:
             self.device = torch.device("cpu")
             print("Neural network using CPU")

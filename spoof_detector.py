@@ -30,44 +30,16 @@ except ImportError as e:
     raise
 
 class SpoofDetector:
-    def check_gpu_availability(self):
-        """Check GPU availability and print detailed information"""
-        print("\nGPU Status Check:")
-        
-        # Check PyTorch CUDA
-        torch_cuda = torch.cuda.is_available()
-        print(f"PyTorch CUDA Available: {torch_cuda}")
-        if torch_cuda:
-            print(f"CUDA Device: {torch.cuda.get_device_name(0)}")
-            print(f"CUDA Version: {torch.version.cuda}")
-        
-        # Check OpenCV CUDA
-        opencv_cuda = cv2.cuda.getCudaEnabledDeviceCount() > 0
-        print(f"OpenCV CUDA Available: {opencv_cuda}")
-        if opencv_cuda:
-            try:
-                # Test OpenCV CUDA
-                test_mat = cv2.cuda.GpuMat()
-                print("OpenCV CUDA Test: Success")
-            except Exception as e:
-                print(f"OpenCV CUDA Test Failed: {e}")
-        
-        # Check CUDA environment
-        cuda_path = os.environ.get('CUDA_PATH')
-        print(f"CUDA_PATH: {cuda_path}")
-        
-        return torch_cuda and opencv_cuda
-    
-    def __init__(self, device_id=0, model_dir=None):
+
+    def __init__(self, device_id=-1, model_dir=None):
         """Initialize spoof detector with device and model directory"""
-        # Check PyTorch GPU availability
-        self.has_gpu = torch.cuda.is_available()
-        if self.has_gpu:
+
+        if device_id >= 0:
+            torch.device("mps")
             self.device_id = device_id
-            print(f"PyTorch using GPU: {torch.cuda.get_device_name(0)}")
-            print(f"CUDA Version: {torch.version.cuda}")
+            print("PyTorch using MPS")
         else:
-            self.device_id = -1
+            self.device_id = 0
             print("PyTorch using CPU")
         
         # Set default model directory relative to Silent Face directory
@@ -140,9 +112,8 @@ class SpoofDetector:
                 
                 img = self.image_cropper.crop(**param)
                 
-                # Get prediction using GPU
-                with torch.cuda.amp.autocast():
-                    prediction = self.model_test.predict(img, model_path)
+             
+                prediction = self.model_test.predict(img, model_path)
                 
                 # Get result for current face
                 label = np.argmax(prediction)

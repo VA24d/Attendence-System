@@ -4,6 +4,11 @@
 
 The Face Recognition Attendance System is a Python-based application that uses face recognition technology to manage attendance. It leverages machine learning models for face detection and recognition, and includes features for spoof detection to ensure the authenticity of the detected faces.
 
+This is specifically opotimized for mac OS
+
+Use the other version other platforms.
+-> [Other OS] https://github.com/BHASKAR1823/Face_recog/
+
 ## Features
 
 - **Face Registration**: Capture and register new faces into the system.

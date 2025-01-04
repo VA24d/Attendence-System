@@ -3,6 +3,7 @@ try:
     import tkinter as tk
     import cv2
     from PIL import Image, ImageTk
+    from tkinter import messagebox
     import numpy as np
     from insightface.app import FaceAnalysis
     import os
@@ -504,73 +505,113 @@ class AttendanceSystem:
             self.cap.release()
             self.cap = None
         
-        captured_frames = []
+        # Initialize camera for registration
+        self.cap = self.init_camera()
+        if self.cap is None:
+            tk.messagebox.showerror("Error", "Could not access camera!")
+            return
         
-        # Create registration window with fixed size
-        reg_window = self.create_registration_window(captured_frames)
-        
-        # Start preview
-        self.update_preview(reg_window, captured_frames)
+        # Start camera for registration without creating directory yet
+        self.register_photos()
     
-
-
+    def start_registration(self):
+        """Start the registration process for a new face"""
+        # First ensure any existing camera session is closed
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+        
+        # Initialize camera for registration
+        self.cap = self.init_camera()
+        if self.cap is None:
+            messagebox.showerror("Error", "Could not access camera!")
+            return
+        
+        # Start registration UI directly without getting name first
+        self.register_photos()
+    
     def register_photos(self):
         """Capture and save photos for registration"""
+        # Initialize camera if needed
         if self.cap is None or not self.cap.isOpened():
             self.cap = self.init_camera()
         
         if self.cap is None:
-            tk.messagebox.showerror("Error", "Camera not available!")
+            messagebox.showerror("Error", "Camera not available!")
+            return
+        
+        # Test camera read
+        ret, _ = self.cap.read()
+        if not ret:
+            messagebox.showerror("Error", "Cannot read from camera!")
+            if self.cap is not None:
+                self.cap.release()
+                self.cap = None
             return
         
         # Store captured images temporarily
         captured_frames = []
+        preview_active = False  # Flag to control preview
         
         # Create registration window with fixed size
         reg_window = tk.Toplevel(self.root)
         reg_window.title("Face Registration")
-        reg_window.geometry("640x720")
+        reg_window.geometry("640x800")
         reg_window.resizable(False, False)
-        
-        # force focus
-        reg_window.focus_force()
-        
-        def on_reg_window_close():
-            """Handle registration window closing"""
-            if self.cap is not None:
-                self.cap.release()
-                self.cap = None
-            reg_window.destroy()
-            
-            # Clean up captured frames
-            for frame in captured_frames:
-                del frame
-                
-            # release spacebar and escape binding
-            reg_window.unbind('<space>')
-            reg_window.unbind('<Escape>')
-            
-            # bind escape key to close main window
-            self.root.bind('<Escape>', lambda e: self.quit_application())
-        
-        # Bind window close event
-        reg_window.protocol("WM_DELETE_WINDOW", on_reg_window_close)
         
         # Main container with padding
         main_container = tk.Frame(reg_window, padx=10, pady=5)
         main_container.pack(fill="both", expand=True)
         
-        
-        # Name Frame
-        name_frame = tk.Frame(main_container)
+        # Add name input at the top
+        name_frame = tk.LabelFrame(main_container, text="Student Information", padx=10, pady=5)
         name_frame.pack(fill="x", pady=5)
         
-        tk.Label(name_frame, text="Enter your name:", font=('Arial', 12)).pack(side="left", padx=5)
-        name_entry = tk.Entry(name_frame, font=('Arial', 12))
-        name_entry.pack(side="left", padx=5)
-
+        tk.Label(
+            name_frame,
+            text="Enter student name/ID:",
+            font=('Arial', 10)
+        ).pack(side=tk.LEFT, padx=5)
         
-        # Instructions Frame at top
+        name_entry = tk.Entry(name_frame, width=30)
+        name_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Add confirm button
+        def confirm_name():
+            """Validate name before starting preview"""
+            nonlocal preview_active
+            name = name_entry.get().strip()
+            if not name:
+                messagebox.showerror("Error", "Please enter a name/ID!")
+                return
+            
+            # Check if name already exists
+            user_dir = Path("assets/student_images") / name
+            if user_dir.exists():
+                messagebox.showerror("Error", f"User {name} already exists!")
+                return
+            
+            # Disable name entry and confirm button after confirmation
+            name_entry.config(state='disabled')
+            confirm_btn.config(state='disabled')
+            
+            # Enable capture interface
+            instruction_label.config(state='normal')
+            capture_btn.config(state='normal')
+            video_label.config(state='normal')
+            
+            # Start camera preview
+            preview_active = True
+            update_preview()
+        
+        confirm_btn = tk.Button(
+            name_frame,
+            text="Confirm",
+            command=confirm_name
+        )
+        confirm_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Instructions Frame
         instruction_frame = tk.LabelFrame(main_container, text="Instructions", padx=10, pady=5)
         instruction_frame.pack(fill="x", pady=5)
         
@@ -581,26 +622,19 @@ class AttendanceSystem:
         ]
         current_pose = 0
         
-        # Main instruction
+        # Main instruction - initially disabled
         instruction_label = tk.Label(
             instruction_frame,
             text=instructions[current_pose],
-            font=('Arial', 12, 'bold')
+            state='disabled'
         )
         instruction_label.pack(pady=2)
         
-        # Additional instruction
-        tk.Label(
-            instruction_frame,
-            text="Position your face in the green box and click 'Take Photo'",
-            font=('Arial', 10)
-        ).pack(pady=2)
-        
-        # Video display - fixed size
+        # Video display - fixed size, initially disabled
         video_frame = tk.Frame(main_container)
         video_frame.pack(pady=5)
         
-        video_label = tk.Label(video_frame, width=600, height=400)  # Fixed size
+        video_label = tk.Label(video_frame, width=600, height=400, state='disabled')
         video_label.pack()
         
         # Progress Frame
@@ -622,7 +656,7 @@ class AttendanceSystem:
         # Status label
         status_label = tk.Label(
             main_container,
-            text="Ready to capture photo 1 of 3",
+            text="Please enter and confirm student name/ID",
             font=('Arial', 11)
         )
         status_label.pack(pady=5)
@@ -632,42 +666,67 @@ class AttendanceSystem:
         button_frame.pack(pady=5)
         
         def update_preview():
-            if len(captured_frames) >= 3:
+            """Update camera preview"""
+            nonlocal preview_active
+            if not preview_active:
                 return
             
-            ret, frame = self.cap.read()
-            if ret:
-                # Resize frame to fit display
-                frame = cv2.resize(frame, (600, 400))
-                
-                # Draw face detection box
-                faces = self.face_analyzer.get(frame)
-                for face in faces:
-                    bbox = face.bbox.astype(int)
-                    # Use red box for multiple faces, green for single face
-                    color = (0, 255, 0) if len(faces) == 1 else (0, 0, 255)
-                    cv2.rectangle(frame, 
-                                (bbox[0], bbox[1]), 
-                                (bbox[2], bbox[3]), 
-                                color, 2)
-                
-                # Convert frame for display
-                cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                img = Image.fromarray(cv2image)
-                img = ImageTk.PhotoImage(img)
-                video_label.imgtk = img
-                video_label.configure(image=img)
+            if self.cap is None or not self.cap.isOpened():
+                preview_active = False
+                messagebox.showerror("Error", "Camera disconnected!")
+                reg_window.destroy()
+                return
             
-            if len(captured_frames) < 3:  # Continue preview until all photos are captured
-                reg_window.after(10, update_preview)
+            try:
+                ret, frame = self.cap.read()
+                if ret:
+                    # Draw guide box for face positioning
+                    h, w = frame.shape[:2]
+                    center_x, center_y = w // 2, h // 2
+                    box_size = min(w, h) // 2
+                    
+                    # Draw guide box
+                    cv2.rectangle(
+                        frame,
+                        (center_x - box_size//2, center_y - box_size//2),
+                        (center_x + box_size//2, center_y + box_size//2),
+                        (0, 255, 0),
+                        2
+                    )
+                    
+                    # Convert frame for display
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    img = Image.fromarray(frame_rgb)
+                    img = img.resize((640, 480))
+                    imgtk = ImageTk.PhotoImage(image=img)
+                    video_label.imgtk = imgtk
+                    video_label.configure(image=imgtk)
+                    
+                    if preview_active and reg_window.winfo_exists():
+                        reg_window.after(10, update_preview)
+                else:
+                    preview_active = False
+                    messagebox.showerror("Error", "Failed to read from camera!")
+                    reg_window.destroy()
+            except Exception as e:
+                preview_active = False
+                messagebox.showerror("Error", f"Camera error: {str(e)}")
+                reg_window.destroy()
+        
+        def on_window_close():
+            """Handle window closing"""
+            nonlocal preview_active
+            preview_active = False
+            if self.cap is not None:
+                self.cap.release()
+                self.cap = None
+            reg_window.destroy()
+        
+        # Bind window close event
+        reg_window.protocol("WM_DELETE_WINDOW", on_window_close)
         
         def capture_photo():
-            name = name_entry.get()
-            if name == None:
-                tk.messagebox.showerror("Error", "Please enter your name.")
-                
-            
-            nonlocal current_pose
+            nonlocal current_pose, captured_frames
             if current_pose >= 3:
                 return
             
@@ -675,14 +734,40 @@ class AttendanceSystem:
             if ret:
                 faces = self.face_analyzer.get(frame)
                 if len(faces) == 0:
-                    tk.messagebox.showwarning("Warning", "No face detected! Please try again.")
+                    messagebox.showwarning("Warning", "No face detected! Please try again.")
                     return
                 if len(faces) > 1:
-                    tk.messagebox.showwarning(
+                    messagebox.showwarning(
                         "Warning", 
                         "Multiple faces detected! Please ensure only one person is in frame."
                     )
                     return
+                
+                # Check for existing face only on first photo
+                if current_pose == 0:
+                    face = faces[0]
+                    embedding = face.embedding
+                    
+                    if len(self.known_face_embeddings) > 0:
+                        # Use GPU for similarity calculations if available
+                        if torch.cuda.is_available():
+                            curr_embedding = torch.tensor(embedding.reshape(1, -1)).cuda()
+                            known_embeddings = torch.tensor(self.known_face_embeddings).cuda()
+                            similarities = torch.nn.functional.cosine_similarity(curr_embedding, known_embeddings)
+                            similarities = similarities.cpu().numpy()
+                        else:
+                            curr_embedding = embedding.reshape(1, -1)
+                            similarities = cosine_similarity(curr_embedding, self.known_face_embeddings)[0]
+                        
+                        max_similarity = similarities.max()
+                        if max_similarity > 0.5:  # Using same threshold as in process_face
+                            best_match_index = similarities.argmax()
+                            best_match_id = self.known_face_ids[best_match_index]
+                            messagebox.showerror(
+                                "Registration Error", 
+                                f"This face is already registered with ID: {best_match_id}!"
+                            )
+                            return
                 
                 # Store frame in memory
                 captured_frames.append(frame.copy())
@@ -700,14 +785,20 @@ class AttendanceSystem:
         
         def finish_registration():
             if len(captured_frames) < 3:
-                tk.messagebox.showerror("Error", "All three photos must be captured!")
+                messagebox.showerror("Error", "All three photos must be captured!")
+                return
+            
+            # Get the name from entry
+            name = name_entry.get().strip()
+            if not name:
+                messagebox.showerror("Error", "Please enter a name/ID!")
                 return
             
             try:
-                # Create directory for new user only after all photos are captured
+                # Create directory for new user
                 user_dir = Path("assets/student_images") / name
                 if user_dir.exists():
-                    tk.messagebox.showerror("Error", f"User {name} already exists!")
+                    messagebox.showerror("Error", f"User {name} already exists!")
                     return
                 
                 user_dir.mkdir(parents=True, exist_ok=True)
@@ -719,8 +810,9 @@ class AttendanceSystem:
                 
                 status_label.config(text="Registration complete!")
                 capture_btn.config(state='disabled')
+                name_entry.config(state='disabled')  # Disable name entry after completion
                 
-                response = tk.messagebox.askyesno(
+                response = messagebox.askyesno(
                     "Registration Complete",
                     "Photos captured successfully! Would you like to train the system now?"
                 )
@@ -736,42 +828,25 @@ class AttendanceSystem:
                     self.update_student_list()
                     
             except Exception as e:
-                tk.messagebox.showerror("Error", f"Failed to save images: {str(e)}")
-                if user_dir.exists():
-                    try:
-                        shutil.rmtree(user_dir)  # Clean up on failure
-                    except:
-                        pass
-                    
-        # bind space key to capture photo
-        reg_window.bind('<space>', lambda e: capture_photo())
+                messagebox.showerror("Error", f"Failed to save photos: {str(e)}")
         
-        # Capture button
+        # Capture button - initially disabled
         capture_btn = tk.Button(
             button_frame,
             text="Take Photo 1",
             command=capture_photo,
-            bg='lightgray',
-            fg='black',
             font=('Arial', 11, 'bold'),
-            width=15,
-            height=1
+            state='disabled'  # Initially disabled
         )
         capture_btn.pack(side=tk.LEFT, padx=5)
-        
-        # bind escape key to close registration window
-        reg_window.bind('<Escape>', lambda e: on_reg_window_close())
         
         # Cancel button
         tk.Button(
             button_frame,
             text="Cancel",
             command=reg_window.destroy,
-            bg='#f44336',
-            fg='black',
             font=('Arial', 11),
-            width=8,
-            height=1
+            width=8
         ).pack(side=tk.LEFT, padx=5)
         
         # Start preview
@@ -779,8 +854,9 @@ class AttendanceSystem:
     
     def check_image(self):
         """Upload and check an image against the database"""
+        from tkinter import filedialog
         
-        file_path = tk.filedialog.askopenfilename(
+        file_path = filedialog.askopenfilename(
             title="Select Image",
             filetypes=[
                 ("Image files", "*.jpg *.jpeg *.png *.bmp *.gif"),
@@ -794,14 +870,12 @@ class AttendanceSystem:
         try:
             # Read and process image
             img = cv2.imread(file_path)
-            
             if img is None:
-                tk.messagebox.showerror("Error", "Could not read image file!")
+                messagebox.showerror("Error", "Could not read image file!")
                 return
             
             # Check for spoofing first
             is_real, spoof_confidence, bbox, viz_img = self.spoof_detector.predict(img)
-            
             if not is_real:
                 # Show the visualization in a warning window
                 result_window = tk.Toplevel(self.root)
@@ -840,8 +914,6 @@ class AttendanceSystem:
                     result_window,
                     text="Close",
                     command=result_window.destroy,
-                    bg='lightgray',
-                    fg='black',
                     font=('Arial', 11)
                 ).pack(pady=5)
                 
@@ -874,7 +946,7 @@ class AttendanceSystem:
             # Process image
             faces = self.face_analyzer.get(img)
             if len(faces) == 0:
-                tk.messagebox.showwarning("Warning", "No faces detected in image!")
+                messagebox.showwarning("Warning", "No faces detected in image!")
                 result_window.destroy()
                 return
             
@@ -954,13 +1026,11 @@ class AttendanceSystem:
                 result_window,
                 text="Close",
                 command=result_window.destroy,
-                bg='#f44336',
-                fg='black',
                 font=('Arial', 11)
             ).pack(pady=5)
             
         except Exception as e:
-            tk.messagebox.showerror("Error", f"Error processing image: {str(e)}")
+            messagebox.showerror("Error", f"Error processing image: {str(e)}")
     
     def display_frame(self, frame):
         """Helper method to display a frame"""
@@ -1108,16 +1178,12 @@ class AttendanceSystem:
             button_frame,
             text="Confirm",
             command=on_select,
-            bg='white',
-            fg='black'
         ).pack(side=tk.LEFT, padx=5)
         
         tk.Button(
             button_frame,
             text="Cancel",
             command=dialog.destroy,
-            bg='white',
-            fg='black'
         ).pack(side=tk.LEFT, padx=5)
     
     def save_frame_to_student(self, student_id, frame):
